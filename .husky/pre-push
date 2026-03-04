@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running coverage check before push..."
+cd "$(git rev-parse --show-toplevel)/shoply-backend"
+npm run test:cov -- --passWithNoTests
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "Coverage below threshold (75%). Push blocked."
+  exit 1
+fi
+
+echo "Coverage check passed. Proceeding with push."
