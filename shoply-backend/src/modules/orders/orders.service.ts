@@ -4,18 +4,17 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Product } from '../products/entities/product.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { OrdersRepository } from './repositories/orders.repository';
 
 @Injectable()
 export class OrdersService {
   constructor(
-    @InjectRepository(Order)
-    private readonly ordersRepo: Repository<Order>,
+    private readonly ordersRepository: OrdersRepository,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -55,17 +54,11 @@ export class OrdersService {
   }
 
   findUserOrders(userId: string): Promise<Order[]> {
-    return this.ordersRepo.find({
-      where: { user: { id: userId } },
-      order: { createdAt: 'DESC' },
-    });
+    return this.ordersRepository.findByUserId(userId);
   }
 
   async findOne(id: string, userId: string, role: string): Promise<Order> {
-    const order = await this.ordersRepo.findOne({
-      where: { id },
-      relations: ['user'],
-    });
+    const order = await this.ordersRepository.findById(id, true);
     if (!order) throw new NotFoundException('Order not found');
     if (role !== 'admin' && order.user.id !== userId) {
       throw new ForbiddenException('Access denied');
@@ -79,25 +72,20 @@ export class OrdersService {
       throw new BadRequestException('Only pending orders can be cancelled');
     }
     order.status = 'cancelled';
-    return this.ordersRepo.save(order);
+    return this.ordersRepository.save(order);
   }
 
   findAll(status?: string): Promise<Order[]> {
-    const where = status ? { status: status as Order['status'] } : {};
-    return this.ordersRepo.find({
-      where,
-      relations: ['user'],
-      order: { createdAt: 'DESC' },
-    });
+    return this.ordersRepository.findAll(status);
   }
 
   async updateStatus(
     id: string,
     status: 'confirmed' | 'cancelled',
   ): Promise<Order> {
-    const order = await this.ordersRepo.findOne({ where: { id } });
+    const order = await this.ordersRepository.findById(id);
     if (!order) throw new NotFoundException('Order not found');
     order.status = status;
-    return this.ordersRepo.save(order);
+    return this.ordersRepository.save(order);
   }
 }

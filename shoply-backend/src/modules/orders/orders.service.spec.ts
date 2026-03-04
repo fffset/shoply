@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { OrdersRepository } from './repositories/orders.repository';
 import { Order } from './entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 
@@ -25,7 +25,7 @@ const mockOrder = {
 
 describe('OrdersService', () => {
   let service: OrdersService;
-  let ordersRepo: jest.Mocked<Repository<Order>>;
+  let ordersRepository: jest.Mocked<OrdersRepository>;
   let dataSource: { transaction: jest.Mock };
 
   const mockManager = {
@@ -39,10 +39,11 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         {
-          provide: getRepositoryToken(Order),
+          provide: OrdersRepository,
           useValue: {
-            find: jest.fn(),
-            findOne: jest.fn(),
+            findByUserId: jest.fn(),
+            findById: jest.fn(),
+            findAll: jest.fn(),
             save: jest.fn(),
           },
         },
@@ -56,10 +57,9 @@ describe('OrdersService', () => {
     }).compile();
 
     service = module.get<OrdersService>(OrdersService);
-    ordersRepo = module.get(getRepositoryToken(Order));
+    ordersRepository = module.get(OrdersRepository);
     dataSource = module.get(DataSource);
 
-    // Default: transaction immediately calls the callback with mockManager
     dataSource.transaction.mockImplementation((cb: (manager: typeof mockManager) => unknown) =>
       cb(mockManager),
     );
@@ -75,26 +75,21 @@ describe('OrdersService', () => {
       const savedOrder = { ...mockOrder };
 
       mockManager.findOne.mockResolvedValue(product);
-      mockManager.save.mockResolvedValue(product);
       mockManager.create.mockReturnValue(savedOrder);
-      // Second save call returns the order
       mockManager.save
-        .mockResolvedValueOnce(product) // product save
-        .mockResolvedValueOnce(savedOrder); // order save
+        .mockResolvedValueOnce(product)
+        .mockResolvedValueOnce(savedOrder);
 
       const dto = { items: [{ productId: 'prod-uuid', quantity: 2 }] };
       const result = await service.create('user-uuid', dto);
 
       expect(result).toEqual(savedOrder);
-      // Stock should be decremented (product.stock -= 2)
       expect(mockManager.save).toHaveBeenCalledWith(
         expect.objectContaining({ stock: 8 }),
       );
       expect(mockManager.create).toHaveBeenCalledWith(
         Order,
-        expect.objectContaining({
-          totalPrice: expect.any(Number),
-        }),
+        expect.objectContaining({ totalPrice: expect.any(Number) }),
       );
     });
 
@@ -117,9 +112,8 @@ describe('OrdersService', () => {
       mockManager.findOne
         .mockResolvedValueOnce(product1)
         .mockResolvedValueOnce(product2);
-      mockManager.save.mockImplementation(async (entity: unknown) => entity);
 
-      const expectedTotal = 10 * 2 + 20 * 3; // 20 + 60 = 80
+      const expectedTotal = 10 * 2 + 20 * 3;
       mockManager.create.mockReturnValue({ ...mockOrder, totalPrice: expectedTotal });
       mockManager.save
         .mockResolvedValueOnce(product1)
@@ -143,16 +137,14 @@ describe('OrdersService', () => {
 
   describe('findUserOrders', () => {
     it('should return orders for the given userId', async () => {
-      ordersRepo.find.mockResolvedValue([mockOrder as unknown as Order]);
+      ordersRepository.findByUserId.mockResolvedValue([mockOrder as unknown as Order]);
       const result = await service.findUserOrders('user-uuid');
-      expect(ordersRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { user: { id: 'user-uuid' } } }),
-      );
+      expect(ordersRepository.findByUserId).toHaveBeenCalledWith('user-uuid');
       expect(result).toEqual([mockOrder]);
     });
 
     it('should return empty array when user has no orders', async () => {
-      ordersRepo.find.mockResolvedValue([]);
+      ordersRepository.findByUserId.mockResolvedValue([]);
       const result = await service.findUserOrders('user-uuid');
       expect(result).toEqual([]);
     });
@@ -160,13 +152,16 @@ describe('OrdersService', () => {
 
   describe('findOne', () => {
     it('should return order when user is the owner', async () => {
-      ordersRepo.findOne.mockResolvedValue({ ...mockOrder, user: { id: 'user-uuid' } } as unknown as Order);
+      ordersRepository.findById.mockResolvedValue({
+        ...mockOrder,
+        user: { id: 'user-uuid' },
+      } as unknown as Order);
       const result = await service.findOne('order-uuid', 'user-uuid', 'user');
       expect(result).toBeDefined();
     });
 
     it('should return order when caller is admin (even different userId)', async () => {
-      ordersRepo.findOne.mockResolvedValue({
+      ordersRepository.findById.mockResolvedValue({
         ...mockOrder,
         user: { id: 'other-uuid' },
       } as unknown as Order);
@@ -175,7 +170,7 @@ describe('OrdersService', () => {
     });
 
     it('should throw ForbiddenException when non-owner non-admin accesses order', async () => {
-      ordersRepo.findOne.mockResolvedValue({
+      ordersRepository.findById.mockResolvedValue({
         ...mockOrder,
         user: { id: 'someone-else' },
       } as unknown as Order);
@@ -185,28 +180,29 @@ describe('OrdersService', () => {
     });
 
     it('should throw NotFoundException when order does not exist', async () => {
-      ordersRepo.findOne.mockResolvedValue(null);
-      await expect(service.findOne('bad-id', 'user-uuid', 'user')).rejects.toThrow(
-        NotFoundException,
-      );
+      ordersRepository.findById.mockResolvedValue(null);
+      await expect(service.findOne('bad-id', 'user-uuid', 'user')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('cancel', () => {
     it('should cancel a pending order', async () => {
       const pendingOrder = { ...mockOrder, status: 'pending' as const, user: { id: 'user-uuid' } };
-      ordersRepo.findOne.mockResolvedValue(pendingOrder as unknown as Order);
-      ordersRepo.save.mockResolvedValue({ ...pendingOrder, status: 'cancelled' } as unknown as Order);
+      ordersRepository.findById.mockResolvedValue(pendingOrder as unknown as Order);
+      ordersRepository.save.mockResolvedValue({
+        ...pendingOrder,
+        status: 'cancelled',
+      } as unknown as Order);
 
       const result = await service.cancel('order-uuid', 'user-uuid', 'user');
       expect(result.status).toBe('cancelled');
-      expect(ordersRepo.save).toHaveBeenCalledWith(
+      expect(ordersRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'cancelled' }),
       );
     });
 
     it('should throw BadRequestException when order is not pending', async () => {
-      ordersRepo.findOne.mockResolvedValue({
+      ordersRepository.findById.mockResolvedValue({
         ...mockOrder,
         status: 'confirmed' as const,
         user: { id: 'user-uuid' },
@@ -219,42 +215,43 @@ describe('OrdersService', () => {
 
   describe('findAll', () => {
     it('should return all orders without status filter', async () => {
-      ordersRepo.find.mockResolvedValue([mockOrder as unknown as Order]);
+      ordersRepository.findAll.mockResolvedValue([mockOrder as unknown as Order]);
       const result = await service.findAll();
-      expect(ordersRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: {} }),
-      );
+      expect(ordersRepository.findAll).toHaveBeenCalledWith(undefined);
       expect(result).toHaveLength(1);
     });
 
     it('should filter by status when provided', async () => {
-      ordersRepo.find.mockResolvedValue([]);
+      ordersRepository.findAll.mockResolvedValue([]);
       await service.findAll('confirmed');
-      expect(ordersRepo.find).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { status: 'confirmed' } }),
-      );
+      expect(ordersRepository.findAll).toHaveBeenCalledWith('confirmed');
     });
   });
 
   describe('updateStatus', () => {
     it('should update order status', async () => {
       const order = { ...mockOrder, status: 'pending' as const };
-      ordersRepo.findOne.mockResolvedValue(order as unknown as Order);
-      ordersRepo.save.mockResolvedValue({ ...order, status: 'confirmed' } as unknown as Order);
+      ordersRepository.findById.mockResolvedValue(order as unknown as Order);
+      ordersRepository.save.mockResolvedValue({
+        ...order,
+        status: 'confirmed',
+      } as unknown as Order);
 
       const result = await service.updateStatus('order-uuid', 'confirmed');
       expect(result.status).toBe('confirmed');
     });
 
     it('should throw NotFoundException when order does not exist', async () => {
-      ordersRepo.findOne.mockResolvedValue(null);
+      ordersRepository.findById.mockResolvedValue(null);
       await expect(service.updateStatus('bad-id', 'confirmed')).rejects.toThrow(NotFoundException);
     });
   });
 
-  // Suppress unused variable warning for mockUser/mockProduct
+  // Suppress unused variable warnings
   it('should have mockUser and mockProduct defined', () => {
     expect(mockUser).toBeDefined();
     expect(mockProduct).toBeDefined();
+    const _p: typeof Product = Product;
+    expect(_p).toBeDefined();
   });
 });

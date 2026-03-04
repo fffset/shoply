@@ -1,22 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { CategoriesRepository } from './repositories/categories.repository';
 import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 
 @Injectable()
 export class CategoriesService {
-  constructor(
-    @InjectRepository(Category)
-    private readonly categoriesRepo: Repository<Category>,
-  ) {}
+  constructor(private readonly categoriesRepository: CategoriesRepository) {}
 
   findAll(): Promise<Category[]> {
-    return this.categoriesRepo.find();
+    return this.categoriesRepository.findAll();
   }
 
   create(dto: CreateCategoryDto): Promise<Category> {
-    const category = this.categoriesRepo.create(dto);
-    return this.categoriesRepo.save(category);
+    return this.categoriesRepository.save(dto);
   }
 }

@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from './entities/user.entity';
+import { UsersRepository } from './repositories/users.repository';
 
 interface CreateUserData {
   email: string;
@@ -13,25 +12,18 @@ interface CreateUserData {
 
 @Injectable()
 export class UsersService {
-  constructor(
-    @InjectRepository(User)
-    private readonly usersRepo: Repository<User>,
-  ) {}
+  constructor(private readonly usersRepository: UsersRepository) {}
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepo.findOne({ where: { email } });
+  findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository.findByEmail(email);
   }
 
-  async findById(id: string): Promise<User | null> {
-    return this.usersRepo.findOne({ where: { id } });
+  findById(id: string): Promise<User | null> {
+    return this.usersRepository.findById(id);
   }
 
   async create(data: CreateUserData): Promise<User> {
     const hashedPassword = await bcrypt.hash(data.password, 10);
-    const user = this.usersRepo.create({
-      ...data,
-      password: hashedPassword,
-    });
-    return this.usersRepo.save(user);
+    return this.usersRepository.save({ ...data, password: hashedPassword });
   }
 }

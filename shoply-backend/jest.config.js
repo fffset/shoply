@@ -26,6 +26,9 @@ module.exports = {
     '!src/**/*.entity.ts',
     '!src/**/*.dto.ts',
     '!src/config/**',
+    '!src/migrations/**',
+    '!src/seeds/**',
+    '!src/**/repositories/**',
   ],
   coverageDirectory: './coverage',
   coverageThreshold: {

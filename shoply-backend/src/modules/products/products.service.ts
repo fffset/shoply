@@ -1,46 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ProductsRepository } from './repositories/products.repository';
 import { Product } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(
-    @InjectRepository(Product)
-    private readonly productsRepo: Repository<Product>,
-  ) {}
+  constructor(private readonly productsRepository: ProductsRepository) {}
 
-  async findAll(page = 1, limit = 12, categoryId?: string, search?: string) {
-    const qb = this.productsRepo
-      .createQueryBuilder('product')
-      .leftJoinAndSelect('product.category', 'category');
-
-    if (categoryId) {
-      qb.andWhere('category.id = :categoryId', { categoryId });
-    }
-    if (search) {
-      qb.andWhere('product.name ILIKE :search', { search: `%${search}%` });
-    }
-
-    const [data, total] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .orderBy('product.createdAt', 'DESC')
-      .getManyAndCount();
-
-    return { data, total, page, limit };
+  findAll(page = 1, limit = 12, categoryId?: string, search?: string) {
+    return this.productsRepository.findAll(page, limit, categoryId, search);
   }
 
   async findOne(id: string): Promise<Product> {
-    const product = await this.productsRepo.findOne({ where: { id } });
+    const product = await this.productsRepository.findById(id);
     if (!product) throw new NotFoundException('Product not found');
     return product;
   }
 
-  async create(dto: CreateProductDto): Promise<Product> {
-    const product = this.productsRepo.create({
+  create(dto: CreateProductDto): Promise<Product> {
+    return this.productsRepository.save({
       name: dto.name,
       description: dto.description,
       price: dto.price,
@@ -48,7 +27,6 @@ export class ProductsService {
       imageUrl: dto.imageUrl,
       ...(dto.categoryId && { category: { id: dto.categoryId } as never }),
     });
-    return this.productsRepo.save(product);
   }
 
   async update(id: string, dto: UpdateProductDto): Promise<Product> {
@@ -61,11 +39,11 @@ export class ProductsService {
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
       ...(dto.categoryId !== undefined && { category: { id: dto.categoryId } }),
     });
-    return this.productsRepo.save(product);
+    return this.productsRepository.save(product);
   }
 
   async remove(id: string): Promise<void> {
     const product = await this.findOne(id);
-    await this.productsRepo.remove(product);
+    await this.productsRepository.remove(product);
   }
 }
