@@ -1,0 +1,10 @@
+{
+  "name": "shoply",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run start:dev --prefix shoply-backend & npm run dev --prefix shoply-frontend",
+    "dev:backend": "npm run start:dev --prefix shoply-backend",
+    "dev:frontend": "npm run dev --prefix shoply-frontend"
+  }
+}

@@ -18,7 +18,17 @@ cd shoply-backend
 docker-compose up -d
 ```
 
-### 2. Start the backend
+### 2. Start everything (single command)
+
+```bash
+npm run dev
+```
+
+Starts both the backend (port 3001) and frontend (port 3000) in parallel.
+
+> To start them separately, follow the steps below.
+
+### 3. Start the backend (separately)
 
 ```bash
 cd shoply-backend
@@ -26,7 +36,7 @@ npm install
 npm run start:dev
 ```
 
-### 3. Start the frontend
+### 4. Start the frontend (separately)
 
 ```bash
 cd shoply-frontend
@@ -43,7 +53,9 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - Shopping cart (persisted in localStorage)
 - User registration and login (JWT)
 - Order placement with stock validation
-- Admin panel — product and order management
+- User order history with cancel support
+- User profile page
+- Admin panel — product, order, and category management
 
 ## Architecture
 
